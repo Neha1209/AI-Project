@@ -1,20 +1,63 @@
 import { Router } from 'express'
+import { VoyageAIClient } from 'voyageai'
+import { supabase } from '../lib/supabase.js'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const geminiModel = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' })
 
 //Router() lets you define routes in a separate file instead of piling everything 
 // into index.js. 
 const router = Router()
 
-router.post('/', (req, res) => {
+const voyage = new VoyageAIClient({ apiKey: process.env.VOYAGE_API_KEY })
+
+router.post('/', async (req, res) => {
   const { question } = req.body
 
   //this is basic input validation. 400 is the HTTP status code for "bad request"
   if (!question) {
     return res.status(400).json({ error: 'question is required' })
   }
+// 1. Embed the question using Voyage
+  const result = await voyage.embed({
+    input: [question],
+    model: "voyage-4-lite",
+    outputDimension: 1024,
+  });
 
-  res.json({
-    answer: `You asked: "${question}". Real answer comes in Phase 2.`,
-    sources: [],
+    const queryEmbedding = result.data[0].embedding
+
+    // 2. Call the Supabase RPC function to find the most relevant chunks
+  const { data: matches, error } = await supabase.rpc('match_docs_chunks', {
+    query_embedding: queryEmbedding,
+    match_count: 5,
+  })
+
+  if (error) {
+    console.error('Supabase RPC error:', error)
+    return res.status(500).json({ error: 'retrieval failed' })
+  }
+
+  // 3. After you get matches back from Supabase, build the context string and call Claude
+const context = matches
+  .map((m, i) => `[${i + 1}] (from ${m.source_file})\n${m.content}`)
+  .join("\n\n---\n\n");
+
+const geminiResult = await geminiModel.generateContent(
+  `Answer the question using ONLY the context below. If the answer isn't in the context, say you don't know — do not use outside knowledge.
+
+Context:
+${context}
+
+Question: ${question}`
+)
+
+const answer = geminiResult.response.text()
+
+    res.json({
+    answer: answer,
+    sources: matches.map(m => m.source_file),
   })
 })
 
