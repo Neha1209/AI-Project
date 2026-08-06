@@ -1,10 +1,9 @@
 import { Router } from 'express'
 import { VoyageAIClient } from 'voyageai'
 import { supabase } from '../lib/supabase.js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-const geminiModel = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' })
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
 //Router() lets you define routes in a separate file instead of piling everything 
 // into index.js. 
@@ -44,16 +43,17 @@ const context = matches
   .map((m, i) => `[${i + 1}] (from ${m.source_file})\n${m.content}`)
   .join("\n\n---\n\n");
 
-const geminiResult = await geminiModel.generateContent(
-  `Answer the question using ONLY the context below. If the answer isn't in the context, say you don't know — do not use outside knowledge.
+const genResult = await ai.models.generateContent({
+  model: 'gemini-3.6-flash',
+  contents: `Answer the question using ONLY the context below. If the answer isn't in the context, say you don't know — do not use outside knowledge.
 
 Context:
 ${context}
 
-Question: ${question}`
-)
+Question: ${question}`,
+})
 
-const answer = geminiResult.response.text()
+const answer = genResult.text
 
     res.json({
     answer: answer,
