@@ -10,7 +10,7 @@ export default function ReviewPrPanel() {
     setLoading(true);
     setReview(null);
 
-    const res = await fetch("/api/review", {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/review`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prUrl }),
